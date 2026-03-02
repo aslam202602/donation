@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "electron:dev": "cross-env NODE_ENV=development concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "vite build && electron-builder"
+    "electron:build": "vite build"
   },
   "build": {
     "appId": "com.antigravity.app",
@@ -20,16 +20,15 @@
     ],
     "directories": {
       "output": "dist_electron"
-    },
-    "win": {
-      "target": "nsis"
     }
   },
   "dependencies": {
-    "better-sqlite3": "^12.6.2",
+    "@neondatabase/serverless": "^1.0.2",
+    "dotenv": "^17.3.1",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
