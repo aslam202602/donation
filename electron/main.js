@@ -28,7 +28,12 @@ async function initDb() {
         await pool.query(`CREATE TABLE IF NOT EXISTS donees (id TEXT PRIMARY KEY, familyId TEXT, cnic TEXT, name TEXT, fatherName TEXT, address TEXT, status TEXT, amount TEXT)`);
         await pool.query(`CREATE TABLE IF NOT EXISTS payments (id TEXT PRIMARY KEY, date TEXT, doneeId TEXT, familyId TEXT, doneeName TEXT, amount TEXT)`);
         await pool.query(`CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, timestamp TEXT, user TEXT, action TEXT, details TEXT)`);
-        await pool.query(`INSERT INTO users (id, username, password, role) VALUES ('1', 'admin', 'admin', 'admin') ON CONFLICT (id) DO NOTHING`);
+
+        const { rows: usersCount } = await pool.query(`SELECT COUNT(*) FROM users`);
+        if (parseInt(usersCount[0].count) === 0) {
+            await pool.query(`INSERT INTO users (id, username, password, role) VALUES ('1', 'admin', 'admin', 'admin')`);
+        }
+
         console.log("Database initialized successfully from Neon.");
     } catch (err) {
         console.error("Neon DB Init Error. Database not configured?", err.message);
