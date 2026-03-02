@@ -15,14 +15,11 @@ function App() {
 
   // --- AUTH STATE ---
   const [currentUser, setCurrentUser] = useState(null);
-  const [users, setUsers] = useState(() => {
-    const saved = localStorage.getItem('app_users');
-    // Default admin account if none exists
-    return saved ? JSON.parse(saved) : [{ id: 1, username: 'admin', password: 'password123', role: 'admin' }];
-  });
+  const [users, setUsers] = useState([]);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [workingDate, setWorkingDate] = useState(() => new Date().toISOString().split('T')[0]); // YYYY-MM-DD
 
   // --- PASSWORD CHANGE STATE ---
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -36,16 +33,10 @@ function App() {
   const [userError, setUserError] = useState('');
 
   // --- AUDIT STATE ---
-  const [auditLogs, setAuditLogs] = useState(() => {
-    const saved = localStorage.getItem('app_audit_logs');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [auditLogs, setAuditLogs] = useState([]);
 
   // --- DONEE TAB STATE ---
-  const [donees, setDonees] = useState(() => {
-    const saved = localStorage.getItem('app_donees');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [donees, setDonees] = useState([]);
   const [isAddingDonee, setIsAddingDonee] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [doneeForm, setDoneeForm] = useState({
@@ -60,10 +51,7 @@ function App() {
   const [doneeError, setDoneeError] = useState('');
 
   // --- PAYMENTS TAB STATE ---
-  const [payments, setPayments] = useState(() => {
-    const saved = localStorage.getItem('app_payments');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [payments, setPayments] = useState([]);
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [selectedDoneeId, setSelectedDoneeId] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
@@ -71,22 +59,98 @@ function App() {
   const [paymentError, setPaymentError] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
 
-  // --- PERSISTENCE ---
   useEffect(() => {
-    localStorage.setItem('app_donees', JSON.stringify(donees));
-  }, [donees]);
+    setPaymentDate(workingDate);
+  }, [workingDate]);
+
+  // --- DATABASE & PERSISTENCE ---
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('app_payments', JSON.stringify(payments));
-  }, [payments]);
+    async function loadData() {
+      if (window.dbApi) {
+        const u = await window.dbApi.query('SELECT * FROM users');
+        const a = await window.dbApi.query('SELECT * FROM audit_logs ORDER BY id DESC');
+        const d = await window.dbApi.query('SELECT * FROM donees');
+        const p = await window.dbApi.query('SELECT * FROM payments ORDER BY id DESC');
+        if (u && u.length > 0) setUsers(u);
+        if (a) setAuditLogs(a);
+        if (d) setDonees(d);
+        if (p) setPayments(p);
+      } else {
+        const u = localStorage.getItem('app_users');
+        const a = localStorage.getItem('app_audit_logs');
+        const d = localStorage.getItem('app_donees');
+        const p = localStorage.getItem('app_payments');
+        if (u) setUsers(JSON.parse(u));
+        if (a) setAuditLogs(JSON.parse(a));
+        if (d) setDonees(JSON.parse(d));
+        if (p) setPayments(JSON.parse(p));
+      }
+      setDataLoaded(true);
+    }
+    loadData();
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem('app_users', JSON.stringify(users));
-  }, [users]);
+    if (!dataLoaded) return;
+    if (window.dbApi) {
+      const saveToDb = async () => {
+        await window.dbApi.execute('DELETE FROM donees');
+        for (const d of donees) {
+          await window.dbApi.execute('INSERT INTO donees (id, familyId, cnic, name, fatherName, address, status, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [d.id.toString(), d.familyId, d.cnic, d.name, d.fatherName, d.address, d.status, d.amount.toString()]);
+        }
+      };
+      saveToDb();
+    } else {
+      localStorage.setItem('app_donees', JSON.stringify(donees));
+    }
+  }, [donees, dataLoaded]);
 
   useEffect(() => {
-    localStorage.setItem('app_audit_logs', JSON.stringify(auditLogs));
-  }, [auditLogs]);
+    if (!dataLoaded) return;
+    if (window.dbApi) {
+      const saveToDb = async () => {
+        await window.dbApi.execute('DELETE FROM payments');
+        for (const p of payments) {
+          await window.dbApi.execute('INSERT INTO payments (id, date, doneeId, familyId, doneeName, amount) VALUES (?, ?, ?, ?, ?, ?)', [p.id.toString(), p.date, p.doneeId.toString(), p.familyId, p.doneeName, p.amount.toString()]);
+        }
+      };
+      saveToDb();
+    } else {
+      localStorage.setItem('app_payments', JSON.stringify(payments));
+    }
+  }, [payments, dataLoaded]);
+
+  useEffect(() => {
+    if (!dataLoaded) return;
+    if (window.dbApi) {
+      const saveToDb = async () => {
+        await window.dbApi.execute('DELETE FROM users');
+        for (const u of users) {
+          await window.dbApi.execute('INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)', [u.id.toString(), u.username, u.password, u.role]);
+        }
+      };
+      saveToDb();
+    } else {
+      localStorage.setItem('app_users', JSON.stringify(users));
+    }
+  }, [users, dataLoaded]);
+
+  useEffect(() => {
+    if (!dataLoaded) return;
+    if (window.dbApi) {
+      const saveToDb = async () => {
+        await window.dbApi.execute('DELETE FROM audit_logs');
+        for (const a of auditLogs) {
+          await window.dbApi.execute('INSERT INTO audit_logs (id, timestamp, user, action, details) VALUES (?, ?, ?, ?, ?)', [a.id.toString(), a.timestamp, a.user, a.action, a.details]);
+        }
+      };
+      saveToDb();
+    } else {
+      localStorage.setItem('app_audit_logs', JSON.stringify(auditLogs));
+    }
+  }, [auditLogs, dataLoaded]);
 
   // --- COMPUTED ---
   const selectedDonee = donees.find(d => d.id.toString() === selectedDoneeId);
@@ -95,10 +159,16 @@ function App() {
     d.cnic.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredPayments = payments.filter(p =>
-    p.familyId.toLowerCase().includes(paymentSearch.toLowerCase()) ||
-    p.doneeName.toLowerCase().includes(paymentSearch.toLowerCase())
-  );
+  const workingYear = new Date(workingDate).getFullYear();
+  const workingMonth = new Date(workingDate).getMonth();
+
+  const filteredPayments = payments.filter(p => {
+    const pDate = new Date(p.date);
+    const matchesMonthYear = pDate.getMonth() === workingMonth && pDate.getFullYear() === workingYear;
+    const matchesSearch = p.familyId.toLowerCase().includes(paymentSearch.toLowerCase()) ||
+      p.doneeName.toLowerCase().includes(paymentSearch.toLowerCase());
+    return matchesMonthYear && matchesSearch;
+  });
 
   const sortedPayments = [...filteredPayments].sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -108,8 +178,8 @@ function App() {
     if (!selectedDonee) return;
 
     // Check for duplicate payment within the same month/year
-    const paymentMonth = new Date(paymentDate).getMonth();
-    const paymentYear = new Date(paymentDate).getFullYear();
+    const paymentMonth = new Date(workingDate).getMonth();
+    const paymentYear = new Date(workingDate).getFullYear();
 
     const isDuplicateMonth = payments.some(p => {
       const existingPaymentDate = new Date(p.date);
@@ -119,13 +189,13 @@ function App() {
     });
 
     if (isDuplicateMonth) {
-      setPaymentError(`A payment for ${selectedDonee.name} has already been recorded in ${new Date(paymentDate).toLocaleString('default', { month: 'long', year: 'numeric' })}.`);
+      setPaymentError(`A payment for ${selectedDonee.name} has already been recorded in ${new Date(workingDate).toLocaleString('default', { month: 'long', year: 'numeric' })}.`);
       return;
     }
 
     const newPayment = {
       id: Date.now(),
-      date: paymentDate,
+      date: workingDate,
       doneeId: selectedDonee.id,
       familyId: selectedDonee.familyId,
       doneeName: selectedDonee.name,
@@ -137,7 +207,7 @@ function App() {
 
     setIsAddingPayment(false);
     setSelectedDoneeId('');
-    setPaymentDate(new Date().toISOString().split('T')[0]); // reset date
+    setPaymentDate(workingDate);
     setPaymentError('');
     setPaymentAmount('');
   };
@@ -329,6 +399,21 @@ function App() {
               </div>
             </div>
 
+            <div className="form-group">
+              <label className="form-label">Working Date</label>
+              <div style={{ position: 'relative' }}>
+                <Calendar size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="date"
+                  required
+                  value={workingDate}
+                  onChange={(e) => setWorkingDate(e.target.value)}
+                  style={{ paddingLeft: '2.75rem', paddingRight: '1rem', background: 'rgba(15, 23, 42, 0.6)' }}
+                  className="form-control"
+                />
+              </div>
+            </div>
+
             <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1rem' }}>
               Authenticate
             </button>
@@ -468,25 +553,15 @@ function App() {
                   </div>
                 )}
 
-                <form onSubmit={handlePaymentSubmit}>
-                  <div className="grid grid-cols-2">
-                    <div className="form-group">
-                      <label className="form-label">Payment Date</label>
-                      <div style={{ position: 'relative' }}>
-                        <Calendar size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                        <input
-                          type="date"
-                          required
-                          value={paymentDate}
-                          onChange={(e) => setPaymentDate(e.target.value)}
-                          style={{ paddingLeft: '2.75rem', background: 'rgba(15, 23, 42, 0.6)' }}
-                          className="form-control"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                <div style={{ background: 'rgba(56, 189, 248, 0.1)', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(56, 189, 248, 0.2)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                  <Calendar size={20} className="text-gradient" />
+                  <span style={{ color: 'var(--text-main)', fontSize: '1rem', fontWeight: 500 }}>
+                    Recording Payment for: <strong style={{ color: 'white' }}>{new Date(workingDate).toLocaleDateString()}</strong>
+                  </span>
+                </div>
 
-                  <div className="form-group" style={{ marginTop: '1.5rem' }}>
+                <form onSubmit={handlePaymentSubmit}>
+                  <div className="form-group">
                     <label className="form-label">Select Donee</label>
                     <div style={{ position: 'relative' }}>
                       <Users size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', zIndex: 1 }} />
@@ -559,7 +634,7 @@ function App() {
             <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
 
               {/* Search Bar Area */}
-              <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.2)' }}>
+              <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.2)' }}>
                 <div style={{ position: 'relative', width: '100%', maxWidth: '400px' }}>
                   <Search size={20} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                   <input
@@ -570,6 +645,12 @@ function App() {
                     className="form-control"
                     style={{ paddingLeft: '3rem', background: 'rgba(15, 23, 42, 0.8)' }}
                   />
+                </div>
+                <div style={{ background: 'rgba(56, 189, 248, 0.1)', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(56, 189, 248, 0.2)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{new Date(workingYear, workingMonth).toLocaleString('default', { month: 'short', year: 'numeric' })} Total:</span>
+                  <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--accent-tertiary)' }}>
+                    {sortedPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0).toLocaleString()}
+                  </span>
                 </div>
               </div>
 
